@@ -1,0 +1,462 @@
+{% extends "dashboard/base.html" %}
+{% block title %}Traffic authority · RoadAlert{% endblock %}
+{% block nav %}<span class="sub" style="margin:0">Traffic authority</span>{% endblock %}
+{% block content %}
+<div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:12px; margin-bottom:12px;">
+  <div>
+    <h1 style="margin:0;">Traffic Authority Control Center</h1>
+    <p class="sub" style="margin:4px 0 0;">Active incidents, real-time verified alerts, and automatic emergency voice dispatching.</p>
+  </div>
+  <button id="openVoiceModalBtn" class="primary" style="background:#b42318; border-color:#b42318; padding:8px 16px; font-weight:600; display:flex; align-items:center; gap:8px;">
+    <span>🚨 Trigger Emergency Voice Alert</span>
+  </button>
+</div>
+
+{% include "dashboard/_live.html" %}
+
+<div class="stats">
+  <div class="stat"><b>{{ active_count }}</b><span>Active incidents</span></div>
+  <div class="stat"><b>{{ report.total_incidents }}</b><span>Incidents in {{ report.period }}</span></div>
+  <div class="stat"><b>{{ report.total_delay_hours }} h</b><span>Total delay in {{ report.period }}</span></div>
+  <div class="stat"><b>{{ recipients.count }}</b><span>Active Emergency Recipients</span></div>
+</div>
+
+<!-- ================= Emergency Voice Alert Modal / Panel ================= -->
+<div id="voiceAlertModal" class="card" style="display:none; border:2px solid #b42318; background:var(--card); margin-bottom:24px; padding:20px;">
+  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; border-bottom:1px solid var(--line); padding-bottom:10px;">
+    <h2 style="margin:0; color:#b42318; display:flex; align-items:center; gap:8px;">
+      <span>📞 Deploy RoadAlert Voice Call Broadcast</span>
+    </h2>
+    <button type="button" id="closeVoiceModalBtn" style="border:0; background:none; font-size:18px; cursor:pointer;">✕</button>
+  </div>
+
+  <p style="font-size:13.5px; color:var(--muted); margin-top:0;">
+    Initiates outbound emergency phone calls via Twilio Voice API to verified recipients and emergency contacts.
+    Ensure verified incident information before dispatching.
+  </p>
+
+  <form id="emergencyVoiceForm">
+    {% csrf_token %}
+    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:14px; margin-bottom:14px;">
+      <div>
+        <label style="display:block; font-size:13px; font-weight:600; margin-bottom:4px;">Select Active Incident</label>
+        <select id="alertIncidentSelect" style="width:100%;">
+          <option value="">-- Or Create Broadcast for New Incident --</option>
+          {% for i in incidents %}
+            <option value="{{ i.id }}" data-type="{{ i.incident_type }}" data-road="{{ i.road_name }}" data-sev="{{ i.severity }}">
+              #{{ i.id }} - {{ i.get_incident_type_display }} @ {{ i.road_name|default:"Unknown Location" }} ({{ i.get_severity_display }})
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div>
+        <label style="display:block; font-size:13px; font-weight:600; margin-bottom:4px;">Road / Corridor Name</label>
+        <input type="text" id="alertRoadName" placeholder="e.g. NH-66 - Surathkal Bridge" style="width:100%;">
+      </div>
+
+      <div>
+        <label style="display:block; font-size:13px; font-weight:600; margin-bottom:4px;">Incident Type</label>
+        <select id="alertIncidentType" style="width:100%;">
+          <option value="road_closure">Road Closure / Blockage</option>
+          <option value="accident">Accident</option>
+          <option value="landslide">Landslide</option>
+          <option value="flood">Flood / Waterlogging</option>
+          <option value="heavy_traffic">Severe Traffic Gridlock</option>
+        </select>
+      </div>
+
+      <div>
+        <label style="display:block; font-size:13px; font-weight:600; margin-bottom:4px;">Severity</label>
+        <select id="alertSeverity" style="width:100%;">
+          <option value="severe">Severe Congestion</option>
+          <option value="closed">Road Closed (High Priority)</option>
+          <option value="heavy">Heavy Delay</option>
+          <option value="moderate">Moderate</option>
+        </select>
+      </div>
+    </div>
+
+    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:14px; margin-bottom:14px;">
+      <div>
+        <label style="display:block; font-size:13px; font-weight:600; margin-bottom:4px;">Recipient Target Group</label>
+        <select id="alertRecipientGroup" style="width:100%;">
+          <option value="all">All Verified Recipients ({{ recipients.count }})</option>
+          <option value="authority">Traffic Authorities / Police Only</option>
+          <option value="emergency_services">Emergency Services (Ambulance/Fire) Only</option>
+          <option value="transport_manager">Logistics & Fleet Managers Only</option>
+        </select>
+      </div>
+
+      <div>
+        <label style="display:block; font-size:13px; font-weight:600; margin-bottom:4px;">Recommended Alternative Route</label>
+        <input type="text" id="alertAlternativeRoute" placeholder="e.g. Via Bajpe Airport Bypass" style="width:100%;">
+      </div>
+
+      <div>
+        <label style="display:block; font-size:13px; font-weight:600; margin-bottom:4px;">Authority Advisory / Instructions</label>
+        <input type="text" id="alertInstructions" placeholder="e.g. Turn back or expect 45 min delay" style="width:100%;">
+      </div>
+    </div>
+
+    <div style="margin-bottom:14px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+        <label style="font-size:13px; font-weight:600;">Automated Speech Preview (What recipients will hear):</label>
+        <button type="button" id="refreshPreviewBtn" class="link" style="font-size:12px;">↻ Update Preview</button>
+      </div>
+      <div id="voicePreviewBox" style="background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:10px 14px; font-size:13.5px; font-style:italic; min-height:48px;">
+        "RoadAlert Emergency Notification. Attention. A Severe Road Closure has been detected on the selected corridor. Please remain alert and avoid this corridor..."
+      </div>
+    </div>
+
+    <div id="alertResultBanner" style="display:none; padding:10px 14px; border-radius:8px; margin-bottom:14px; font-size:14px;"></div>
+
+    <div style="display:flex; justify-content:flex-end; gap:10px; align-items:center;">
+      <button type="button" id="cancelVoiceBtn">Cancel</button>
+      <button type="button" id="submitVoiceAlertBtn" class="primary" style="background:#b42318; border-color:#b42318; font-weight:600;">
+        📞 Confirm & Dispatch Emergency Calls
+      </button>
+    </div>
+  </form>
+</div>
+
+<!-- ================= Active Incidents Table ================= -->
+<div class="card">
+  <h2>Live Incident Reports</h2>
+{% if incidents %}
+<table>
+  <thead><tr><th>Incident</th><th>Location</th><th>Severity</th><th>Verification</th><th>Reports</th><th>Delay</th><th>Actions</th></tr></thead>
+  <tbody>
+  {% for i in incidents %}
+    <tr>
+      <td>{{ i.get_incident_type_display }}<br><span class="evidence">since {{ i.started_at|date:"d M, H:i" }}</span></td>
+      <td>{{ i.road_name|default:"-" }}<br><span class="evidence">{{ i.latitude|floatformat:4 }}, {{ i.longitude|floatformat:4 }}</span></td>
+      <td><span class="pill {{ i.severity }}">{{ i.get_severity_display }}</span></td>
+      <td><span class="pill lvl">Level {{ i.verification_level }}</span><br><span class="evidence">{{ i.get_verification_level_display }} · {{ i.confidence }}%</span></td>
+      <td>{{ i.report_count }}</td>
+      <td>{% if i.estimated_delay_min %}{{ i.estimated_delay_min }} min{% else %}-{% endif %}</td>
+      <td style="white-space:nowrap">
+        <button type="button" class="quick-call-btn" data-id="{{ i.id }}" data-road="{{ i.road_name }}" data-type="{{ i.incident_type }}" data-sev="{{ i.severity }}" style="background:#fff1d6; border-color:#f5a623; color:#9a5b00; padding:4px 8px; font-size:12px; margin-right:4px;">
+          📞 Alert
+        </button>
+        {% if not i.authority_confirmed %}
+        <form class="inline" method="post" action="{% url 'incident_action' i.pk 'confirm' %}">{% csrf_token %}<button class="primary" type="submit">Confirm</button></form>
+        {% endif %}
+        <form class="inline" method="post" action="{% url 'incident_action' i.pk 'resolve' %}">{% csrf_token %}<button type="submit">Resolve</button></form>
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+  <p class="empty">No active incidents.</p>
+{% endif %}
+</div>
+
+<!-- ================= Call History Table ================= -->
+<div class="card" style="margin-top:28px;">
+  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+    <h2 style="margin:0;">Emergency Voice Alert Call Log</h2>
+    <button type="button" id="refreshCallHistoryBtn" class="link" style="font-size:13px;">↻ Refresh Call Status</button>
+  </div>
+  <p class="sub" style="margin:0 0 14px;">Recent automated and manual emergency voice dispatches with real-time delivery status.</p>
+
+  <div id="callHistoryTableContainer">
+    {% if call_records %}
+    <table>
+      <thead>
+        <tr>
+          <th>Time</th>
+          <th>Incident / Corridor</th>
+          <th>Recipient</th>
+          <th>Masked Destination</th>
+          <th>Trigger Source</th>
+          <th>Twilio Call SID</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody id="callHistoryTableBody">
+      {% for call in call_records %}
+        <tr>
+          <td>{{ call.created_at|date:"d M, H:i:s" }}</td>
+          <td>{{ call.incident.road_name|default:call.incident.get_incident_type_display|default:"Emergency Alert" }}</td>
+          <td>{{ call.recipient.name|default:"Emergency Contact" }}</td>
+          <td><code>{{ call.phone_number_masked }}</code></td>
+          <td><span class="pill lvl">{{ call.get_trigger_source_display }}</span></td>
+          <td><span style="font-family:monospace; font-size:12px;">{{ call.call_sid|default:"Pending"|truncatechars:18 }}</span></td>
+          <td>
+            {% if call.status == 'completed' %}
+              <span class="pill ok">Completed ({{ call.duration_seconds|default:0 }}s)</span>
+            {% elif call.status == 'in-progress' or call.status == 'ringing' or call.status == 'initiated' %}
+              <span class="pill moderate">{{ call.get_status_display }}</span>
+            {% elif call.status == 'queued' %}
+              <span class="pill lvl">Queued</span>
+            {% else %}
+              <span class="pill closed">{{ call.get_status_display }}</span>
+            {% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+      <p class="empty">No emergency voice calls dispatched yet.</p>
+    {% endif %}
+  </div>
+</div>
+
+<h1 style="margin-top:36px">Monthly report</h1>
+<form class="filters" method="get">
+  <label for="month">Month</label>
+  <select id="month" name="month">
+    {% for n, name in months %}<option value="{{ n }}" {% if n == month %}selected{% endif %}>{{ name }}</option>{% endfor %}
+  </select>
+  <input name="year" type="number" value="{{ year }}" min="2000" max="2100" style="width:90px" aria-label="Year">
+  <button type="submit">Show</button>
+</form>
+
+{% if report.total_incidents %}
+<div class="stats">
+  <div class="stat"><b>{{ report.average_delay_min }} min</b><span>Average delay</span></div>
+  <div class="stat"><b>{{ report.max_delay_min }} min</b><span>Longest delay</span></div>
+  <div class="stat"><b>{{ report.authority_confirmed }}</b><span>Authority confirmed</span></div>
+</div>
+<div class="two">
+  <div class="card">
+    <h2>By reason</h2>
+    <div class="bars">
+    {% for r in report.by_reason %}
+      <div class="barrow"><span>{{ r.reason }}</span>
+        <div class="track"><div class="fill" style="width:{{ r.pct }}%"></div></div>
+        <span>{{ r.incidents }} · {{ r.total_delay_hours }} h</span></div>
+    {% endfor %}
+    </div>
+  </div>
+  <div class="card">
+    <h2>Hotspots</h2>
+    {% if report.hotspots %}
+    <div class="bars">
+    {% for h in report.hotspots %}
+      <div class="barrow"><span>{{ h.road }}</span>
+        <div class="track"><div class="fill" style="width:{{ h.pct }}%"></div></div>
+        <span>{{ h.incidents }} · {{ h.total_delay_hours }} h</span></div>
+    {% endfor %}
+    </div>
+    {% else %}<p class="empty">No named roads this month.</p>{% endif %}
+  </div>
+</div>
+<p class="sub">Each bar shows number of incidents, then total delay hours.</p>
+{% else %}
+<div class="card"><p class="empty">No incidents recorded for {{ report.period }}.</p></div>
+{% endif %}
+
+<script>
+(function() {
+  const modal = document.getElementById('voiceAlertModal');
+  const openBtn = document.getElementById('openVoiceModalBtn');
+  const closeBtn = document.getElementById('closeVoiceModalBtn');
+  const cancelBtn = document.getElementById('cancelVoiceBtn');
+  const submitBtn = document.getElementById('submitVoiceAlertBtn');
+  const refreshPreviewBtn = document.getElementById('refreshPreviewBtn');
+  const previewBox = document.getElementById('voicePreviewBox');
+  const banner = document.getElementById('alertResultBanner');
+  const refreshHistoryBtn = document.getElementById('refreshCallHistoryBtn');
+
+  const incidentSelect = document.getElementById('alertIncidentSelect');
+  const roadInput = document.getElementById('alertRoadName');
+  const typeSelect = document.getElementById('alertIncidentType');
+  const sevSelect = document.getElementById('alertSeverity');
+  const groupSelect = document.getElementById('alertRecipientGroup');
+  const altRouteInput = document.getElementById('alertAlternativeRoute');
+  const instructionsInput = document.getElementById('alertInstructions');
+
+  function getCsrfToken() {
+    const input = document.querySelector('[name=csrfmiddlewaretoken]');
+    return input ? input.value : '';
+  }
+
+  function showModal() {
+    modal.style.display = 'block';
+    modal.scrollIntoView({ behavior: 'smooth' });
+    updatePreview();
+  }
+
+  function hideModal() {
+    modal.style.display = 'none';
+  }
+
+  if (openBtn) openBtn.addEventListener('click', showModal);
+  if (closeBtn) closeBtn.addEventListener('click', hideModal);
+  if (cancelBtn) cancelBtn.addEventListener('click', hideModal);
+
+  // Quick call buttons inside the table
+  document.querySelectorAll('.quick-call-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const id = btn.getAttribute('data-id');
+      const road = btn.getAttribute('data-road');
+      const type = btn.getAttribute('data-type');
+      const sev = btn.getAttribute('data-sev');
+
+      incidentSelect.value = id;
+      if (road) roadInput.value = road;
+      if (type) typeSelect.value = type;
+      if (sev) sevSelect.value = sev;
+
+      showModal();
+    });
+  });
+
+  incidentSelect.addEventListener('change', () => {
+    const opt = incidentSelect.options[incidentSelect.selectedIndex];
+    if (opt && opt.value) {
+      if (opt.getAttribute('data-road')) roadInput.value = opt.getAttribute('data-road');
+      if (opt.getAttribute('data-type')) typeSelect.value = opt.getAttribute('data-type');
+      if (opt.getAttribute('data-sev')) sevSelect.value = opt.getAttribute('data-sev');
+    }
+    updatePreview();
+  });
+
+  [roadInput, typeSelect, sevSelect, altRouteInput, instructionsInput].forEach(el => {
+    el.addEventListener('input', updatePreview);
+    el.addEventListener('change', updatePreview);
+  });
+
+  if (refreshPreviewBtn) refreshPreviewBtn.addEventListener('click', updatePreview);
+
+  async function updatePreview() {
+    try {
+      const resp = await fetch('/api/alerts/preview-message/', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': getCsrfToken()
+        },
+        body: JSON.stringify({
+          incident_id: incidentSelect.value ? parseInt(incidentSelect.value) : null,
+          road_name: roadInput.value.trim(),
+          incident_type: typeSelect.value,
+          severity: sevSelect.value,
+          alternative_route: altRouteInput.value.trim(),
+          custom_instructions: instructionsInput.value.trim()
+        })
+      });
+      if (resp.ok) {
+        const data = await resp.json();
+        previewBox.innerText = `"${data.preview_text}"`;
+      }
+    } catch(e) {
+      console.warn("Preview update failed", e);
+    }
+  }
+
+  // Submit emergency calls
+  submitBtn.addEventListener('click', async () => {
+    const road = roadInput.value.trim() || 'Corridor';
+    const groupText = groupSelect.options[groupSelect.selectedIndex].text;
+    
+    // Explicit confirmation step for safety
+    const confirmed = confirm(
+      `CONFIRM EMERGENCY VOICE CALL DISPATCH:\n\n` +
+      `Target Road: ${road}\n` +
+      `Recipient Target: ${groupText}\n\n` +
+      `Are you sure you want to trigger automated outbound phone calls now?`
+    );
+    if (!confirmed) return;
+
+    submitBtn.disabled = true;
+    submitBtn.innerText = "Initiating Outbound Calls...";
+    banner.style.display = 'none';
+
+    try {
+      const resp = await fetch('/api/alerts/trigger-call/', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': getCsrfToken()
+        },
+        body: JSON.stringify({
+          incident_id: incidentSelect.value ? parseInt(incidentSelect.value) : null,
+          road_name: roadInput.value.trim(),
+          incident_type: typeSelect.value,
+          severity: sevSelect.value,
+          recipient_group: groupSelect.value,
+          alternative_route: altRouteInput.value.trim(),
+          custom_instructions: instructionsInput.value.trim(),
+          ignore_cooldown: false
+        })
+      });
+
+      const data = await resp.json();
+      banner.style.display = 'block';
+
+      if (resp.ok) {
+        banner.style.background = 'var(--ok-bg)';
+        banner.style.color = 'var(--ok)';
+        banner.style.border = '1px solid var(--ok)';
+        banner.innerHTML = `<strong>✅ Success:</strong> ${data.message} (${data.queued_calls} calls queued).`;
+        setTimeout(refreshCallHistory, 1500);
+      } else {
+        banner.style.background = 'var(--bad-bg)';
+        banner.style.color = 'var(--bad)';
+        banner.style.border = '1px solid var(--bad)';
+        banner.innerHTML = `<strong>⚠️ Alert Dispatch Blocked:</strong> ${data.message || data.detail || 'Failed to dispatch calls.'}`;
+      }
+    } catch(err) {
+      banner.style.display = 'block';
+      banner.style.background = 'var(--bad-bg)';
+      banner.style.color = 'var(--bad)';
+      banner.innerHTML = `<strong>Error:</strong> Network failure connecting to server: ${err}`;
+    } finally {
+      submitBtn.disabled = false;
+      submitBtn.innerText = "📞 Confirm & Dispatch Emergency Calls";
+    }
+  });
+
+  async function refreshCallHistory() {
+    try {
+      const resp = await fetch('/api/alerts/history/', {
+        headers: { 'X-CSRFToken': getCsrfToken() }
+      });
+      if (resp.ok) {
+        const rows = await resp.json();
+        const tbody = document.getElementById('callHistoryTableBody');
+        if (!tbody || rows.length === 0) return;
+
+        let html = '';
+        rows.forEach(c => {
+          let statusPill = `<span class="pill closed">${c.status}</span>`;
+          if (c.status === 'completed') {
+            statusPill = `<span class="pill ok">Completed (${c.duration_seconds || 0}s)</span>`;
+          } else if (['in-progress', 'ringing', 'initiated'].includes(c.status)) {
+            statusPill = `<span class="pill moderate">${c.status}</span>`;
+          } else if (c.status === 'queued') {
+            statusPill = `<span class="pill lvl">Queued</span>`;
+          }
+
+          const timeStr = new Date(c.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', second:'2-digit'});
+          html += `<tr>
+            <td>${timeStr}</td>
+            <td>${c.road_name || c.incident_type || 'Emergency Alert'}</td>
+            <td>${c.recipient_name || 'Emergency Contact'}</td>
+            <td><code>${c.phone_number_masked}</code></td>
+            <td><span class="pill lvl">${c.trigger_source}</span></td>
+            <td><span style="font-family:monospace; font-size:12px;">${c.call_sid ? c.call_sid.substring(0, 16) + '...' : 'Pending'}</span></td>
+            <td>${statusPill}</td>
+          </tr>`;
+        });
+        tbody.innerHTML = html;
+      }
+    } catch(e) {
+      console.warn("Failed to refresh call history", e);
+    }
+  }
+
+  if (refreshHistoryBtn) {
+    refreshHistoryBtn.addEventListener('click', refreshCallHistory);
+  }
+
+  // Periodically refresh history every 10 seconds if table is open
+  setInterval(refreshCallHistory, 10000);
+})();
+</script>
+{% endblock %}

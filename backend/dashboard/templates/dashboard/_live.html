@@ -1,0 +1,14 @@
+<p class="sub" style="margin-top:-12px"><span id="live-status">Live view, refreshes every 30 s</span></p>
+<script>
+(function () {
+  var every = 30, left = every, el = document.getElementById("live-status");
+  setInterval(function () {
+    if (document.hidden) return;                       // don't refresh a tab nobody is looking at
+    var a = document.activeElement;
+    if (a && (a.tagName === "SELECT" || a.tagName === "INPUT")) { left = every; return; }  // user is choosing
+    left -= 1;
+    if (left <= 0) { location.reload(); return; }
+    el.textContent = "Live view, refreshing in " + left + " s";
+  }, 1000);
+})();
+</script>

@@ -1,0 +1,53 @@
+{% extends "dashboard/base.html" %}
+{% block title %}Employee travel · RoadAlert{% endblock %}
+{% block nav %}<span class="sub" style="margin:0">{{ company }}</span>{% endblock %}
+{% block content %}
+<h1>Employee travel</h1>
+<p class="sub">Journeys shared by employees in the last {{ hours }} hours.</p>
+{% include "dashboard/_live.html" %}
+
+<div class="stats">
+  <div class="stat"><b>{{ rows|length }}</b><span>Journeys shown</span></div>
+  <div class="stat"><b>{{ delayed }}</b><span>Affected by traffic</span></div>
+  <div class="stat"><b>{{ sharing_count }} / {{ employee_count }}</b><span>Employees sharing</span></div>
+</div>
+
+<div class="note">
+  Employees are shown only while they are travelling and have agreed to share. Anyone who hasn't opted in,
+  or whose trip isn't covered by your tracking policy{% if policy %} ({{ policy.get_scope_display|lower }}){% endif %}, does not appear here.
+</div>
+
+<form class="filters" method="get">
+  <label for="hours">Show last</label>
+  <select id="hours" name="hours" onchange="this.form.submit()">
+    <option value="1"  {% if hours == 1 %}selected{% endif %}>1 hour</option>
+    <option value="6"  {% if hours == 6 %}selected{% endif %}>6 hours</option>
+    <option value="12" {% if hours == 12 %}selected{% endif %}>12 hours</option>
+    <option value="24" {% if hours == 24 %}selected{% endif %}>24 hours</option>
+    <option value="72" {% if hours == 72 %}selected{% endif %}>3 days</option>
+  </select>
+  <noscript><button type="submit">Apply</button></noscript>
+</form>
+
+<div class="card">
+{% if rows %}
+<table>
+  <thead><tr><th>Employee</th><th>Route</th><th>Status</th><th>Delay</th><th>Verification</th><th>Evidence</th></tr></thead>
+  <tbody>
+  {% for r in rows %}
+    <tr>
+      <td>{{ r.employee }}</td>
+      <td>{{ r.route }}</td>
+      <td><span class="pill {% if r.status == 'Normal' %}ok{% elif r.status == 'Traffic' %}heavy{% else %}severe{% endif %}">{{ r.status }}</span></td>
+      <td>{% if r.delay_min %}{{ r.delay_min }} min{% else %}-{% endif %}</td>
+      <td>{{ r.verification }}</td>
+      <td class="evidence">{{ r.evidence|default:"-" }}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+  <p class="empty">No shared journeys in this period.</p>
+{% endif %}
+</div>
+{% endblock %}

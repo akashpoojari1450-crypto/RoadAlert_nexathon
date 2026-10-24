@@ -1,0 +1,17 @@
+{% extends "dashboard/base.html" %}
+{% block title %}Sign in · RoadAlert{% endblock %}
+{% block content %}
+<div class="login card">
+  <h1>RoadAlert</h1>
+  <p class="sub">Sign in to the employer or authority dashboard.</p>
+  <form method="post">{% csrf_token %}
+    <label for="id_username">Username</label>
+    <input id="id_username" name="username" autocomplete="username" autofocus required>
+    <label for="id_password">Password</label>
+    <input id="id_password" name="password" type="password" autocomplete="current-password" required>
+    <input type="hidden" name="next" value="{{ next }}">
+    <p><button class="primary" type="submit">Sign in</button></p>
+    {% if form.errors %}<p class="err">That username and password don't match. Try again.</p>{% endif %}
+  </form>
+</div>
+{% endblock %}

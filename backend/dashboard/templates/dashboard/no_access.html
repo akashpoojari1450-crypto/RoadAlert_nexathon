@@ -1,0 +1,9 @@
+{% extends "dashboard/base.html" %}
+{% block title %}No dashboard · RoadAlert{% endblock %}
+{% block content %}
+<div class="card">
+  <h1>No dashboard for your account</h1>
+  <p class="sub">Dashboards are for employer and traffic-authority accounts. Passengers and employees use the mobile app.</p>
+  <p>Your account type is <b>{{ user.get_role_display }}</b>. If this is a mistake, ask an administrator to change your role.</p>
+</div>
+{% endblock %}

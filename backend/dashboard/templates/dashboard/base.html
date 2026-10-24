@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}RoadAlert{% endblock %}</title>
+<style>
+  :root {
+    --bg: #f5f6f8; --card: #fff; --text: #1c2330; --muted: #667085; --line: #e4e7ec;
+    --accent: #1f6feb; --ok: #1a7f4b; --ok-bg: #e3f5ea; --warn: #9a5b00; --warn-bg: #fff1d6;
+    --bad: #b42318; --bad-bg: #fde4e1; --info-bg: #e7f0ff;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #12161d; --card: #1a202b; --text: #e8ecf2; --muted: #98a2b3; --line: #2b3342;
+      --accent: #6aa5ff; --ok: #5fd39a; --ok-bg: #12301f; --warn: #f2b84b; --warn-bg: #36280d;
+      --bad: #ff8b7e; --bad-bg: #3a1714; --info-bg: #14233d;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  header { background: var(--card); border-bottom: 1px solid var(--line); }
+  .bar { max-width: 1100px; margin: 0 auto; padding: 12px 16px; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+  .brand { font-weight: 700; font-size: 17px; }
+  .bar .who { margin-left: auto; color: var(--muted); font-size: 14px; display: flex; gap: 12px; align-items: center; }
+  main { max-width: 1100px; margin: 0 auto; padding: 20px 16px 48px; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  h2 { font-size: 16px; margin: 0 0 12px; }
+  .sub { color: var(--muted); margin: 0 0 20px; }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 20px; }
+  .stat, .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; }
+  .stat { padding: 14px 16px; }
+  .stat b { display: block; font-size: 24px; line-height: 1.2; }
+  .stat span { color: var(--muted); font-size: 13px; }
+  .card { padding: 16px; margin-bottom: 20px; overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); font-weight: 600; }
+  tr:last-child td { border-bottom: 0; }
+  .pill { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 12.5px; font-weight: 600; white-space: nowrap; }
+  .Normal, .ok { background: var(--ok-bg); color: var(--ok); }
+  .Traffic, .heavy, .moderate { background: var(--warn-bg); color: var(--warn); }
+  .Road, .severe, .closed { background: var(--bad-bg); color: var(--bad); }
+  .lvl { background: var(--info-bg); color: var(--accent); }
+  .evidence { color: var(--muted); font-size: 13px; max-width: 420px; }
+  .empty { color: var(--muted); padding: 18px 4px; }
+  .note { background: var(--info-bg); border-radius: 8px; padding: 10px 14px; font-size: 14px; margin-bottom: 20px; }
+  button, .btn { font: inherit; cursor: pointer; border-radius: 7px; border: 1px solid var(--line); background: var(--card);
+                 color: var(--text); padding: 5px 11px; text-decoration: none; display: inline-block; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button.link { border: 0; background: none; color: var(--accent); padding: 0; }
+  form.inline { display: inline; }
+  .bars { display: grid; gap: 8px; }
+  .barrow { display: grid; grid-template-columns: 170px 1fr 120px; gap: 10px; align-items: center; font-size: 14px; }
+  .track { background: var(--line); border-radius: 5px; height: 12px; overflow: hidden; }
+  .fill { background: var(--accent); height: 100%; border-radius: 5px; }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  @media (max-width: 760px) { .two { grid-template-columns: 1fr; } .barrow { grid-template-columns: 110px 1fr 90px; } }
+  .filters { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 14px; }
+  input, select { font: inherit; padding: 5px 8px; border-radius: 7px; border: 1px solid var(--line); background: var(--card); color: var(--text); }
+  .login { max-width: 360px; margin: 12vh auto; }
+  .login label { display: block; margin: 12px 0 4px; font-size: 14px; color: var(--muted); }
+  .login input { width: 100%; }
+  .err { color: var(--bad); margin-top: 10px; }
+</style>
+</head>
+<body>
+{% if user.is_authenticated %}
+<header><div class="bar">
+  <span class="brand">RoadAlert</span>
+  {% block nav %}{% endblock %}
+  <span class="who">{{ user.username }} · {{ user.get_role_display }}
+    <form class="inline" method="post" action="{% url 'logout' %}">{% csrf_token %}<button class="link" type="submit">Log out</button></form>
+  </span>
+</div></header>
+{% endif %}
+<main>{% block content %}{% endblock %}</main>
+
+<script>
+// Auto-track user live geolocation upon login
+document.addEventListener('DOMContentLoaded', function() {
+  if (navigator.geolocation) {
+    navigator.geolocation.getCurrentPosition(function(pos) {
+      const lat = pos.coords.latitude;
+      const lng = pos.coords.longitude;
+      sessionStorage.setItem('user_lat', lat);
+      sessionStorage.setItem('user_lng', lng);
+      console.log('Live user geolocation acquired:', lat, lng);
+    }, function(err) {
+      console.warn('Geolocation access:', err.message);
+    }, { enableHighAccuracy: true });
+  }
+});
+</script>
+</body>
+</html>
